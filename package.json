@@ -1,0 +1,46 @@
+{
+  "name": "mrbak-explorer",
+  "version": "0.1.0",
+  "description": "Zero-dependency CLI and local web GUI utility to inspect, browse, search, verify, and extract Macrium Reflect .mrbak and .mrbakx backups",
+  "author": "nad767",
+  "type": "module",
+  "bin": {
+    "mrbak": "./bin/mrbak.js"
+  },
+  "files": [
+    "bin/",
+    "src/",
+    "LICENSE",
+    "README.md"
+  ],
+  "scripts": {
+    "start": "node ./bin/mrbak.js",
+    "cli": "node ./bin/mrbak.js",
+    "gui": "node ./bin/mrbak.js --gui",
+    "test": "node --test test/*.test.js"
+  },
+  "keywords": [
+    "macrium",
+    "mrbak",
+    "mrbakx",
+    "mrimg",
+    "backup",
+    "fat32",
+    "quicklz",
+    "zstd",
+    "cli",
+    "recovery"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/nad767/mrbak-explorer.git"
+  },
+  "homepage": "https://github.com/nad767/mrbak-explorer#readme",
+  "bugs": {
+    "url": "https://github.com/nad767/mrbak-explorer/issues"
+  },
+  "engines": {
+    "node": ">=22.15.0"
+  },
+  "license": "MIT"
+}

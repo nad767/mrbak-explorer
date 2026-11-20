@@ -1,0 +1,870 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>mrbak-explorer</title>
+<style>
+  :root {
+    --bg: #0f141b;
+    --panel: #161d27;
+    --panel-2: #1c2532;
+    --border: #2a3546;
+    --text: #e6edf3;
+    --muted: #8b9bb0;
+    --accent: #3b82f6;
+    --accent-hover: #2563eb;
+    --good: #22c55e;
+    --warn: #f59e0b;
+    --bad: #ef4444;
+    --row-hover: #202a38;
+    --row-selected: #1e3352;
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0; height: 100%;
+    background: var(--bg); color: var(--text);
+    font-family: var(--sans); font-size: 13px;
+  }
+  button, input, select {
+    font-family: inherit; font-size: 13px; color: var(--text);
+    background: var(--panel-2); border: 1px solid var(--border);
+    border-radius: 6px; padding: 6px 10px;
+  }
+  button {
+    cursor: pointer; display: inline-flex; align-items: center; gap: 6px;
+    transition: background 0.12s, border-color 0.12s;
+  }
+  button:hover:not(:disabled) { background: #263244; border-color: #3d4d66; }
+  button:disabled { opacity: 0.45; cursor: not-allowed; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 500; }
+  button.primary:hover:not(:disabled) { background: var(--accent-hover); border-color: var(--accent-hover); }
+  input:focus { outline: none; border-color: var(--accent); }
+
+  .app {
+    display: grid;
+    grid-template-rows: auto 1fr auto;
+    height: 100vh;
+  }
+
+  /* Topbar */
+  .topbar {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
+    padding: 10px 14px; background: var(--panel); border-bottom: 1px solid var(--border);
+  }
+  .brand {
+    font-weight: 700; font-size: 14px; letter-spacing: 0.2px;
+    color: #93c5fd; margin-right: 6px; white-space: nowrap;
+  }
+  .path-box { flex: 1; min-width: 240px; font-family: var(--mono); font-size: 12px; }
+  .pw-box { width: 150px; }
+
+  /* Workspace */
+  .workspace {
+    display: grid;
+    grid-template-columns: 270px 1fr 380px;
+    min-height: 0;
+    overflow: hidden;
+  }
+  @media (max-width: 1050px) {
+    .workspace { grid-template-columns: 220px 1fr; }
+    .preview-pane { display: none; }
+  }
+
+  .sidebar, .main-pane, .preview-pane {
+    min-height: 0; display: flex; flex-direction: column; overflow: hidden;
+  }
+  .sidebar { background: var(--panel); border-right: 1px solid var(--border); }
+  .preview-pane { background: var(--panel); border-left: 1px solid var(--border); }
+
+  .pane-header {
+    padding: 8px 12px; border-bottom: 1px solid var(--border);
+    font-weight: 600; font-size: 12px; color: var(--muted);
+    text-transform: uppercase; letter-spacing: 0.5px;
+    display: flex; align-items: center; justify-content: space-between;
+  }
+
+  /* Summary card */
+  .info-card {
+    padding: 10px 12px; border-bottom: 1px solid var(--border);
+    font-size: 12px; display: grid; gap: 4px;
+  }
+  .info-row { display: flex; justify-content: space-between; gap: 8px; }
+  .info-label { color: var(--muted); }
+  .info-val { font-family: var(--mono); text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  /* Tree */
+  .tree-scroll { flex: 1; overflow: auto; padding: 6px 4px; }
+  .tree-node {
+    display: flex; align-items: center; gap: 4px;
+    padding: 4px 8px; border-radius: 5px; cursor: pointer;
+    white-space: nowrap; user-select: none;
+  }
+  .tree-node:hover { background: var(--row-hover); }
+  .tree-node.active { background: var(--row-selected); color: #fff; }
+  .tree-caret {
+    width: 16px; height: 16px; display: inline-flex; align-items: center;
+    justify-content: center; color: var(--muted); font-size: 10px; flex-shrink: 0;
+  }
+
+  /* Main toolbar & table */
+  .toolbar {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
+    padding: 8px 12px; background: var(--panel); border-bottom: 1px solid var(--border);
+  }
+  .breadcrumbs {
+    flex: 1; min-width: 180px; display: flex; align-items: center; flex-wrap: wrap; gap: 2px;
+    background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 4px 8px;
+    font-family: var(--mono); font-size: 12px;
+  }
+  .crumb { cursor: pointer; padding: 1px 4px; border-radius: 4px; color: #93c5fd; }
+  .crumb:hover { background: var(--row-hover); }
+  .crumb-sep { color: var(--muted); }
+  .search-box { width: 200px; }
+
+  .table-wrap { flex: 1; overflow: auto; }
+  table { width: 100%; border-collapse: collapse; }
+  th {
+    position: sticky; top: 0; background: var(--panel-2);
+    text-align: left; font-size: 11px; font-weight: 600; color: var(--muted);
+    text-transform: uppercase; letter-spacing: 0.4px;
+    padding: 7px 10px; border-bottom: 1px solid var(--border);
+    cursor: pointer; user-select: none;
+  }
+  td {
+    padding: 6px 10px; border-bottom: 1px solid rgba(42, 53, 70, 0.45);
+    vertical-align: middle;
+  }
+  tr:hover td { background: var(--row-hover); }
+  tr.selected td { background: var(--row-selected); }
+  .name-cell { display: flex; align-items: center; gap: 7px; font-weight: 500; }
+  .mono { font-family: var(--mono); font-size: 12px; }
+  .num { text-align: right; font-variant-numeric: tabular-nums; }
+  .muted { color: var(--muted); }
+
+  /* Preview */
+  .preview-body { flex: 1; overflow: auto; padding: 12px; display: flex; flex-direction: column; gap: 10px; }
+  .stat-grid {
+    display: grid; grid-template-columns: 95px 1fr; gap: 4px 8px;
+    font-size: 12px; padding-bottom: 10px; border-bottom: 1px solid var(--border);
+  }
+  .preview-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+  .preview-content {
+    flex: 1; min-height: 150px; background: var(--bg); border: 1px solid var(--border);
+    border-radius: 6px; padding: 10px; overflow: auto;
+    font-family: var(--mono); font-size: 12px; white-space: pre-wrap; word-break: break-word;
+  }
+  .preview-img {
+    max-width: 100%; max-height: 360px; object-fit: contain;
+    border-radius: 4px; background: #090c10; align-self: center;
+  }
+
+  /* Status bar */
+  .statusbar {
+    padding: 6px 14px; background: var(--panel); border-top: 1px solid var(--border);
+    display: flex; justify-content: space-between; align-items: center;
+    font-size: 12px; color: var(--muted);
+  }
+  .badge {
+    display: inline-block; padding: 2px 7px; border-radius: 999px;
+    font-size: 11px; font-weight: 600; background: var(--panel-2); border: 1px solid var(--border);
+  }
+  .badge.good { color: var(--good); border-color: rgba(34, 197, 94, 0.35); }
+  .badge.bad { color: var(--bad); border-color: rgba(239, 68, 68, 0.35); }
+
+  /* Empty state */
+  .empty-state {
+    flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 10px; color: var(--muted); padding: 30px; text-align: center;
+  }
+
+  /* Modal */
+  .modal-backdrop {
+    position: fixed; inset: 0; background: rgba(0, 0, 0, 0.65);
+    display: none; align-items: center; justify-content: center; z-index: 50; padding: 20px;
+  }
+  .modal-backdrop.open { display: flex; }
+  .modal {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+    width: min(760px, 100%); max-height: 85vh; display: flex; flex-direction: column;
+    box-shadow: 0 20px 50px rgba(0,0,0,0.5);
+  }
+  .modal-head {
+    padding: 12px 16px; border-bottom: 1px solid var(--border);
+    display: flex; justify-content: space-between; align-items: center; font-weight: 600;
+  }
+  .modal-body { padding: 14px 16px; overflow: auto; flex: 1; }
+  .modal-foot {
+    padding: 10px 16px; border-top: 1px solid var(--border);
+    display: flex; justify-content: flex-end; gap: 8px;
+  }
+  pre.code-box {
+    margin: 0; background: var(--bg); border: 1px solid var(--border);
+    border-radius: 6px; padding: 12px; font-family: var(--mono); font-size: 12px;
+    overflow: auto; max-height: 55vh; white-space: pre-wrap;
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="topbar">
+    <span class="brand">mrbak-explorer</span>
+    <input id="filePathInput" class="path-box" type="text" placeholder="Path to .mrbak or .mrbakx file..." />
+    <button id="browseBtn" title="Choose backup file">Browse…</button>
+    <input id="passwordInput" class="pw-box" type="password" placeholder="Password (optional)" />
+    <button id="openBtn" class="primary">Open</button>
+    <button id="verifyBtn" disabled>Verify</button>
+    <button id="metaBtn" disabled>Metadata</button>
+    <button id="extractAllBtn" disabled>Extract All…</button>
+  </header>
+
+  <div class="workspace">
+    <aside class="sidebar">
+      <div class="pane-header">
+        <span>Backup Info</span>
+        <span id="formatBadge" class="badge" style="display:none"></span>
+      </div>
+      <div id="infoCard" class="info-card">
+        <span class="muted">No backup opened.</span>
+      </div>
+      <div class="pane-header"><span>Folders</span></div>
+      <div id="treeRoot" class="tree-scroll"></div>
+    </aside>
+
+    <main class="main-pane">
+      <div class="toolbar">
+        <button id="upBtn" disabled title="Parent folder">↑ Up</button>
+        <div id="breadcrumbs" class="breadcrumbs">/</div>
+        <input id="searchInput" class="search-box" type="search" placeholder="Search (*glob* or text)..." disabled />
+        <button id="searchBtn" disabled>Find</button>
+        <label style="display:flex;align-items:center;gap:4px;cursor:pointer;color:var(--muted);">
+          <input id="hiddenChk" type="checkbox" /> Hidden
+        </label>
+        <button id="extractCurBtn" disabled>Extract Folder…</button>
+      </div>
+
+      <div id="tableWrap" class="table-wrap">
+        <div id="emptyState" class="empty-state">
+          <div style="font-size:16px;color:var(--text);font-weight:600;">Open a Macrium Reflect Backup</div>
+          <div>Supports legacy Reflect v7/v8 <code>.mrbak</code> (QuickLZ + chains) and Reflect X <code>.mrbak</code> / <code>.mrbakx</code> (Zstd + AES encryption).</div>
+        </div>
+        <table id="fileTable" style="display:none">
+          <thead>
+            <tr>
+              <th data-sort="name">Name</th>
+              <th data-sort="size" class="num">Size</th>
+              <th data-sort="modifiedAt">Modified</th>
+              <th>Attr</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="fileTbody"></tbody>
+        </table>
+      </div>
+    </main>
+
+    <aside class="preview-pane">
+      <div class="pane-header"><span>Inspector & Preview</span></div>
+      <div id="previewBody" class="preview-body">
+        <div class="muted">Select a file or folder to inspect its metadata and contents.</div>
+      </div>
+    </aside>
+  </div>
+
+  <footer class="statusbar">
+    <span id="statusText">Ready</span>
+    <span id="itemCountText"></span>
+  </footer>
+</div>
+
+<!-- Modal -->
+<div id="modalBackdrop" class="modal-backdrop">
+  <div class="modal">
+    <div class="modal-head">
+      <span id="modalTitle">Modal</span>
+      <button id="modalCloseBtn">Close</button>
+    </div>
+    <div id="modalBody" class="modal-body"></div>
+    <div id="modalFoot" class="modal-foot"></div>
+  </div>
+</div>
+
+<script>
+const state = {
+  open: false,
+  info: null,
+  cwd: '/',
+  searchMode: false,
+  entries: [],
+  sortKey: 'name',
+  sortDir: 1,
+  selected: null,
+  selectToken: 0,
+  platform: 'win32',
+  treeExpanded: new Set(['/']),
+  treeChildren: new Map(),
+};
+
+const $ = (id) => document.getElementById(id);
+
+function fmtBytes(bytes) {
+  if (bytes === null || bytes === undefined) return '';
+  if (bytes === 0) return '0 B';
+  const u = ['B', 'KiB', 'MiB', 'GiB', 'TiB'];
+  let i = 0, v = bytes;
+  while (v >= 1024 && i < u.length - 1) { v /= 1024; i++; }
+  return i === 0 ? `${v} B` : `${v.toFixed(1)} ${u[i]}`;
+}
+
+function fmtDate(iso) {
+  if (!iso) return '';
+  return iso.replace('T', ' ').slice(0, 19);
+}
+
+function esc(s) {
+  return String(s).replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+async function api(url, opts) {
+  const res = await fetch(url, opts);
+  const ct = res.headers.get('content-type') || '';
+  const data = ct.includes('application/json') ? await res.json() : await res.text();
+  if (!res.ok) {
+    const msg = (data && data.error) ? data.error : (typeof data === 'string' ? data : res.statusText);
+    const err = new Error(msg);
+    err.status = res.status;
+    err.code = data && data.code;
+    throw err;
+  }
+  return data;
+}
+
+function setStatus(msg, isError = false) {
+  const el = $('statusText');
+  el.textContent = msg;
+  el.style.color = isError ? 'var(--bad)' : 'var(--muted)';
+}
+
+function showModal(title, bodyHtml, footButtons = []) {
+  $('modalTitle').textContent = title;
+  $('modalBody').innerHTML = bodyHtml;
+  const foot = $('modalFoot');
+  foot.innerHTML = '';
+  for (const b of footButtons) {
+    const btn = document.createElement('button');
+    btn.textContent = b.label;
+    if (b.primary) btn.className = 'primary';
+    btn.onclick = b.onClick;
+    foot.appendChild(btn);
+  }
+  $('modalBackdrop').classList.add('open');
+}
+
+function closeModal() {
+  $('modalBackdrop').classList.remove('open');
+}
+$('modalCloseBtn').onclick = closeModal;
+$('modalBackdrop').onclick = (e) => { if (e.target === $('modalBackdrop')) closeModal(); };
+
+function updateEnabled() {
+  const on = state.open;
+  const hasFat = on && Boolean(state.info?.virtualDrive);
+  $('verifyBtn').disabled = !on;
+  $('metaBtn').disabled = !on;
+  $('extractAllBtn').disabled = !hasFat;
+  $('upBtn').disabled = !hasFat || state.cwd === '/';
+  $('searchInput').disabled = !hasFat;
+  $('searchBtn').disabled = !hasFat;
+  $('extractCurBtn').disabled = !hasFat;
+}
+
+function renderInfo() {
+  const info = state.info;
+  if (!info) {
+    $('infoCard').innerHTML = '<span class="muted">No backup opened.</span>';
+    $('formatBadge').style.display = 'none';
+    return;
+  }
+  const badge = $('formatBadge');
+  badge.style.display = 'inline-block';
+  badge.textContent = info.format.includes('Reflect X') ? 'Reflect X' : 'Legacy';
+
+  const rows = [
+    ['Type', info.backupType],
+    ['File Size', fmtBytes(info.fileSize)],
+    ['Compression', info.compression],
+    ['Encrypted', info.encrypted ? (info.encryptionType || 'Yes') : 'No'],
+    ['Image ID', info.imageId],
+  ];
+  if (info.chainFiles?.length > 1) rows.push(['Chain Files', `${info.chainFiles.length} files`]);
+  if (info.virtualDrive) {
+    rows.push(['Drive Size', fmtBytes(info.virtualDrive.volumeSizeBytes)]);
+    rows.push(['Sector / Cluster', `${info.virtualDrive.bytesPerSector}B / ${fmtBytes(info.virtualDrive.clusterSize)}`]);
+  }
+  $('infoCard').innerHTML = rows.map(([k, v]) =>
+    `<div class="info-row"><span class="info-label">${esc(k)}</span><span class="info-val" title="${esc(v)}">${esc(v)}</span></div>`
+  ).join('');
+}
+
+async function loadTreeDir(dirPath) {
+  const res = await api(`/api/ls?path=${encodeURIComponent(dirPath)}&all=${$('hiddenChk').checked ? 1 : 0}`);
+  const dirs = res.entries.filter((e) => e.isDirectory).map((e) => ({
+    name: e.name,
+    path: dirPath === '/' ? `/${e.name}` : `${dirPath}/${e.name}`,
+  }));
+  state.treeChildren.set(dirPath, dirs);
+}
+
+async function renderTree() {
+  if (!state.open || !state.info?.virtualDrive) { $('treeRoot').innerHTML = ''; return; }
+  const rootEl = $('treeRoot');
+  rootEl.innerHTML = '';
+
+  const renderNode = (name, nodePath, depth) => {
+    const expanded = state.treeExpanded.has(nodePath);
+    const row = document.createElement('div');
+    row.className = 'tree-node' + (state.cwd === nodePath && !state.searchMode ? ' active' : '');
+    row.style.paddingLeft = `${8 + depth * 14}px`;
+
+    const caret = document.createElement('span');
+    caret.className = 'tree-caret';
+    caret.textContent = expanded ? '▾' : '▸';
+    caret.onclick = async (e) => {
+      e.stopPropagation();
+      if (expanded) state.treeExpanded.delete(nodePath);
+      else {
+        state.treeExpanded.add(nodePath);
+        if (!state.treeChildren.has(nodePath)) await loadTreeDir(nodePath);
+      }
+      renderTree();
+    };
+
+    const label = document.createElement('span');
+    label.textContent = `📁 ${name}`;
+    row.append(caret, label);
+    row.onclick = () => navigateTo(nodePath);
+    rootEl.appendChild(row);
+
+    if (expanded) {
+      const children = state.treeChildren.get(nodePath) || [];
+      for (const ch of children) {
+        renderNode(ch.name, ch.path, depth + 1);
+      }
+    }
+  };
+
+  renderNode('/', '/', 0);
+}
+
+function renderBreadcrumbs() {
+  const el = $('breadcrumbs');
+  if (state.searchMode) {
+    el.innerHTML = `<span>Search results for <b>${esc($('searchInput').value)}</b></span>`;
+    return;
+  }
+  const parts = state.cwd.split('/').filter(Boolean);
+  let html = `<span class="crumb" data-path="/">/</span>`;
+  let acc = '';
+  for (const p of parts) {
+    acc += '/' + p;
+    html += `<span class="crumb-sep">/</span><span class="crumb" data-path="${esc(acc)}">${esc(p)}</span>`;
+  }
+  el.innerHTML = html;
+  el.querySelectorAll('.crumb').forEach((c) => {
+    c.onclick = () => navigateTo(c.dataset.path);
+  });
+}
+
+function sortedEntries() {
+  const arr = [...state.entries];
+  arr.sort((a, b) => {
+    if (a.isDirectory !== b.isDirectory) return a.isDirectory ? -1 : 1;
+    let cmp = 0;
+    if (state.sortKey === 'size') cmp = (a.size || 0) - (b.size || 0);
+    else if (state.sortKey === 'modifiedAt') cmp = String(a.modifiedAt || '').localeCompare(String(b.modifiedAt || ''));
+    else cmp = a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
+    return cmp * state.sortDir;
+  });
+  return arr;
+}
+
+function renderTable() {
+  if (!state.open) {
+    $('emptyState').style.display = 'flex';
+    $('fileTable').style.display = 'none';
+    $('itemCountText').textContent = '';
+    return;
+  }
+  $('emptyState').style.display = 'none';
+  $('fileTable').style.display = 'table';
+
+  const rows = sortedEntries();
+  const tbody = $('fileTbody');
+  tbody.innerHTML = '';
+
+  let totalBytes = 0;
+  for (const item of rows) {
+    if (!item.isDirectory) totalBytes += item.size || 0;
+    const itemPath = item.path || (state.cwd === '/' ? `/${item.name}` : `${state.cwd}/${item.name}`);
+    const tr = document.createElement('tr');
+    if (state.selected && state.selected.path === itemPath) tr.className = 'selected';
+
+    tr.innerHTML = `
+      <td><div class="name-cell"><span>${item.isDirectory ? '📁' : '📄'}</span><span>${esc(state.searchMode ? itemPath : item.name)}</span></div></td>
+      <td class="num mono">${item.isDirectory ? '<span class="muted">&lt;DIR&gt;</span>' : esc(fmtBytes(item.size))}</td>
+      <td class="mono muted">${esc(fmtDate(item.modifiedAt || item.createdAt))}</td>
+      <td class="mono muted">${esc(item.attrText)}</td>
+      <td style="text-align:right;white-space:nowrap;"></td>
+    `;
+
+    const actTd = tr.lastElementChild;
+    if (!item.isDirectory) {
+      const dl = document.createElement('button');
+      dl.textContent = 'Download';
+      dl.style.padding = '3px 8px';
+      dl.onclick = (e) => {
+        e.stopPropagation();
+        window.location.href = `/api/download?path=${encodeURIComponent(itemPath)}`;
+      };
+      actTd.appendChild(dl);
+    }
+
+    tr.onclick = () => selectItem(itemPath, item);
+    tr.ondblclick = () => {
+      if (item.isDirectory) navigateTo(itemPath);
+    };
+    tbody.appendChild(tr);
+  }
+
+  $('itemCountText').textContent = `${rows.length} item(s) • ${fmtBytes(totalBytes)}`;
+}
+
+async function navigateTo(dirPath) {
+  state.searchMode = false;
+  state.cwd = dirPath;
+  state.selected = null;
+  setStatus(`Loading ${dirPath}...`);
+  try {
+    const res = await api(`/api/ls?path=${encodeURIComponent(dirPath)}&all=${$('hiddenChk').checked ? 1 : 0}`);
+    state.entries = res.entries;
+    if (!state.treeChildren.has(dirPath)) {
+      state.treeChildren.set(dirPath, res.entries.filter((e) => e.isDirectory).map((e) => ({
+        name: e.name,
+        path: dirPath === '/' ? `/${e.name}` : `${dirPath}/${e.name}`,
+      })));
+    }
+    state.treeExpanded.add(dirPath);
+    renderBreadcrumbs();
+    renderTree();
+    renderTable();
+    updateEnabled();
+    $('previewBody').innerHTML = '<div class="muted">Select a file or folder to inspect its metadata and contents.</div>';
+    setStatus(`Opened ${dirPath}`);
+  } catch (err) {
+    setStatus(err.message, true);
+  }
+}
+
+async function selectItem(itemPath, item) {
+  const token = ++state.selectToken;
+  state.selected = { ...item, path: itemPath };
+  renderTable();
+  const body = $('previewBody');
+  body.innerHTML = '<div class="muted">Loading details...</div>';
+
+  try {
+    const stat = await api(`/api/stat?path=${encodeURIComponent(itemPath)}`);
+    if (token !== state.selectToken) return;
+    let html = `
+      <div class="stat-grid">
+        <div class="muted">Path</div><div class="mono" style="word-break:break-all">${esc(stat.path)}</div>
+        <div class="muted">Short Name</div><div class="mono">${esc(stat.shortName)}</div>
+        <div class="muted">Type</div><div>${esc(stat.type)}</div>
+        <div class="muted">Size</div><div class="mono">${stat.size.toLocaleString()} B (${esc(fmtBytes(stat.size))})</div>
+        <div class="muted">Clusters</div><div class="mono">${stat.startCluster} (${stat.clusterCount} clusters)</div>
+        <div class="muted">Modified</div><div class="mono">${esc(fmtDate(stat.modifiedAt) || 'N/A')}</div>
+        <div class="muted">Created</div><div class="mono">${esc(fmtDate(stat.createdAt) || 'N/A')}</div>
+      </div>
+      <div class="preview-actions">
+        ${!item.isDirectory ? `<button id="prevDlBtn" class="primary">Download File</button>` : ''}
+        <button id="prevExtBtn">Extract to Folder…</button>
+      </div>
+      <div id="previewContentWrap"></div>
+    `;
+    body.innerHTML = html;
+
+    if (!item.isDirectory) {
+      $('prevDlBtn').onclick = () => {
+        window.location.href = `/api/download?path=${encodeURIComponent(itemPath)}`;
+      };
+      const prev = await api(`/api/preview?path=${encodeURIComponent(itemPath)}`);
+      if (token !== state.selectToken) return;
+      const wrap = $('previewContentWrap');
+      if (prev.kind === 'image') {
+        wrap.innerHTML = `<img class="preview-img" src="/api/download?path=${encodeURIComponent(itemPath)}" alt="${esc(item.name)}" />`;
+      } else if (prev.kind === 'text') {
+        wrap.innerHTML = `<div class="muted" style="margin-bottom:4px;">Text preview${prev.truncated ? ' (truncated to 128 KiB)' : ''}:</div><div class="preview-content">${esc(prev.text)}</div>`;
+      } else {
+        wrap.innerHTML = `<div class="muted" style="margin-bottom:4px;">Binary hex preview (first ${prev.previewBytes} bytes):</div><div class="preview-content">${esc(prev.hex)}</div>`;
+      }
+    }
+    $('prevExtBtn').onclick = () => openExtractDialog(itemPath);
+  } catch (err) {
+    if (token !== state.selectToken) return;
+    body.innerHTML = `<div style="color:var(--bad)">${esc(err.message)}</div>`;
+  }
+}
+
+async function openArchive(filePath, password) {
+  if (!filePath) return;
+  setStatus(`Opening ${filePath}...`);
+  try {
+    const res = await api('/api/open', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ filePath, password: password || null }),
+    });
+    state.open = true;
+    state.info = res.info;
+    state.treeExpanded = new Set(['/']);
+    state.treeChildren.clear();
+    $('filePathInput').value = filePath;
+    renderInfo();
+    updateEnabled();
+    if (res.info.virtualDrive) {
+      await navigateTo('/');
+    } else {
+      state.cwd = '/';
+      state.searchMode = false;
+      state.selected = null;
+      state.entries = [];
+      renderBreadcrumbs();
+      renderTree();
+      renderTable();
+      $('previewBody').innerHTML = '<div class="muted">No readable FAT32 virtual drive in this backup.</div>';
+      setStatus(`Opened container (no FAT32 drive: ${res.info.virtualDriveError || 'disk image'})`);
+    }
+  } catch (err) {
+    setStatus(err.message, true);
+    if (/password/i.test(err.message)) {
+      showModal(
+        'Password Required',
+        `<p>This encrypted Reflect X backup requires a password:</p>
+         <input id="modalPwInput" type="password" style="width:100%" placeholder="Enter backup password" />
+         <div id="modalPwErr" style="color:var(--bad);margin-top:8px;">${esc(err.message)}</div>`,
+        [
+          { label: 'Cancel', onClick: closeModal },
+          {
+            label: 'Unlock & Open',
+            primary: true,
+            onClick: async () => {
+              const pw = $('modalPwInput').value;
+              $('passwordInput').value = pw;
+              closeModal();
+              await openArchive(filePath, pw);
+            },
+          },
+        ]
+      );
+      setTimeout(() => {
+        const pwInput = $('modalPwInput');
+        if (!pwInput) return;
+        pwInput.focus();
+        pwInput.onkeydown = async (e) => {
+          if (e.key === 'Enter') {
+            const pw = pwInput.value;
+            $('passwordInput').value = pw;
+            closeModal();
+            await openArchive(filePath, pw);
+          }
+        };
+      }, 30);
+    }
+  }
+}
+
+function openExtractDialog(innerPath) {
+  showModal(
+    `Extract ${innerPath}`,
+    `<div style="display:grid;gap:10px;">
+       <label>Destination Folder:</label>
+       <div style="display:flex;gap:8px;">
+         <input id="extDestInput" type="text" value="./extracted" style="flex:1;font-family:var(--mono)" />
+         ${state.platform === 'win32' ? '<button id="extBrowseBtn">Browse…</button>' : ''}
+       </div>
+       <label style="display:flex;align-items:center;gap:6px;"><input id="extOverwriteChk" type="checkbox" checked /> Overwrite existing files</label>
+       <label style="display:flex;align-items:center;gap:6px;"><input id="extTimesChk" type="checkbox" checked /> Preserve timestamps</label>
+       <div id="extResultMsg"></div>
+     </div>`,
+    [
+      { label: 'Close', onClick: closeModal },
+      {
+        label: 'Extract',
+        primary: true,
+        onClick: async () => {
+          $('extResultMsg').textContent = 'Extracting...';
+          try {
+            const res = await api('/api/extract', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                innerPath,
+                outDir: $('extDestInput').value,
+                overwrite: $('extOverwriteChk').checked,
+                preserveTimestamps: $('extTimesChk').checked,
+              }),
+            });
+            $('extResultMsg').innerHTML = `<span style="color:var(--good)">Extracted ${res.filesExtracted} file(s), ${res.dirsCreated} dir(s) (${fmtBytes(res.bytesExtracted)}) to <code>${esc(res.destRoot)}</code></span>`;
+          } catch (err) {
+            $('extResultMsg').innerHTML = `<span style="color:var(--bad)">${esc(err.message)}</span>`;
+          }
+        },
+      },
+    ]
+  );
+  const extBrowseBtn = $('extBrowseBtn');
+  if (extBrowseBtn) {
+    extBrowseBtn.onclick = async () => {
+      try {
+        const r = await api('/api/browse-local', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ mode: 'folder' }),
+        });
+        if (r.path) $('extDestInput').value = r.path;
+      } catch (err) {
+        $('extResultMsg').innerHTML = `<span style="color:var(--bad)">${esc(err.message)}</span>`;
+      }
+    };
+  }
+}
+
+$('openBtn').onclick = () => openArchive($('filePathInput').value.trim(), $('passwordInput').value);
+$('filePathInput').onkeydown = (e) => { if (e.key === 'Enter') $('openBtn').click(); };
+
+$('browseBtn').onclick = async () => {
+  setStatus('Opening file picker...');
+  try {
+    const r = await api('/api/browse-local', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mode: 'file' }),
+    });
+    if (r.path) {
+      $('filePathInput').value = r.path;
+      await openArchive(r.path, $('passwordInput').value);
+    } else {
+      setStatus('Ready');
+    }
+  } catch (err) {
+    setStatus(err.message, true);
+  }
+};
+
+$('upBtn').onclick = () => {
+  if (state.cwd === '/') return;
+  const parts = state.cwd.split('/').filter(Boolean);
+  parts.pop();
+  navigateTo('/' + parts.join('/'));
+};
+
+$('hiddenChk').onchange = () => {
+  state.treeChildren.clear();
+  if (state.open) navigateTo(state.cwd);
+};
+
+$('searchBtn').onclick = async () => {
+  const q = $('searchInput').value.trim();
+  if (!q) return navigateTo(state.cwd);
+  setStatus(`Searching for "${q}"...`);
+  try {
+    const res = await api(`/api/find?q=${encodeURIComponent(q)}`);
+    state.searchMode = true;
+    state.entries = res.matches;
+    renderBreadcrumbs();
+    renderTable();
+    setStatus(`Found ${res.matches.length} match(es)`);
+  } catch (err) {
+    setStatus(err.message, true);
+  }
+};
+$('searchInput').onkeydown = (e) => { if (e.key === 'Enter') $('searchBtn').click(); };
+
+$('extractAllBtn').onclick = () => openExtractDialog('/');
+$('extractCurBtn').onclick = () => openExtractDialog(state.cwd);
+
+$('metaBtn').onclick = async () => {
+  try {
+    const res = await api('/api/metadata');
+    showModal('Embedded Backup Metadata', `<pre class="code-box">${esc(res.metadata)}</pre>`, [
+      { label: 'Close', primary: true, onClick: closeModal },
+    ]);
+  } catch (err) {
+    setStatus(err.message, true);
+  }
+};
+
+$('verifyBtn').onclick = async () => {
+  showModal('Verifying Backup Integrity…', '<div class="muted">Checking block checksums and decompression across all stored blocks...</div>');
+  try {
+    const res = await api('/api/verify', { method: 'POST' });
+    const badge = res.mismatches === 0
+      ? '<span class="badge good">PASS</span>'
+      : `<span class="badge bad">${res.mismatches} MISMATCH(ES)</span>`;
+    const errs = res.errors?.length ? `<pre class="code-box" style="margin-top:10px">${esc(res.errors.join('\n'))}</pre>` : '';
+    showModal(
+      'Integrity Verification Result',
+      `<div>${badge} Checked <b>${res.checked}</b> of <b>${res.total}</b> stored blocks.</div>${errs}`,
+      [{ label: 'Close', primary: true, onClick: closeModal }]
+    );
+  } catch (err) {
+    showModal('Verification Error', `<div style="color:var(--bad)">${esc(err.message)}</div>`, [
+      { label: 'Close', primary: true, onClick: closeModal },
+    ]);
+  }
+};
+
+document.querySelectorAll('th[data-sort]').forEach((th) => {
+  th.onclick = () => {
+    const key = th.dataset.sort;
+    if (state.sortKey === key) state.sortDir *= -1;
+    else { state.sortKey = key; state.sortDir = 1; }
+    renderTable();
+  };
+});
+
+// Boot: check if CLI pre-opened a file
+(async () => {
+  try {
+    const st = await api('/api/state');
+    if (st.platform) {
+      state.platform = st.platform;
+      if (st.platform !== 'win32') {
+        $('browseBtn').style.display = 'none';
+      }
+    }
+    if (st.open) {
+      state.open = true;
+      state.info = st.info;
+      $('filePathInput').value = st.info.filePath || '';
+      renderInfo();
+      updateEnabled();
+      if (st.info.virtualDrive) await navigateTo('/');
+    } else if (st.initialError) {
+      setStatus(st.initialError, true);
+      if (st.initialFile) {
+        $('filePathInput').value = st.initialFile;
+        if (/password/i.test(st.initialError)) {
+          await openArchive(st.initialFile, '');
+        }
+      }
+    }
+  } catch (err) {
+    setStatus(err.message, true);
+  }
+})();
+</script>
+</body>
+</html>
